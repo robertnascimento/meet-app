@@ -1,176 +1,160 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const { ExpressPeerServer } = require("peer");
+// ================================
+// iDev Meet - server.js
+// ================================
+
+const express = require('express');
+const http = require('http');
+const { ExpressPeerServer } = require('peer');
+const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+
+// ================================
+// PeerJS
+// ================================
+const peerServer = ExpressPeerServer(server, {
+  path: '/myapp',
+  debug: true
+});
+app.use('/peerjs', peerServer);
+
+// ================================
+// Socket.IO
+// ================================
 const io = new Server(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: '*', // O Nginx vai gerenciar o domínio
+    methods: ['GET','POST']
   }
 });
 
-// Configuração do PeerJS com STUN servers
-const peerServer = ExpressPeerServer(server, {
-  debug: true,
-  path: "/myapp",
-  proxied: true,
-  allow_discovery: true,
-  // Configuração para ajudar na conexão através de NAT/firewalls
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" }
-  ]
-});
+let rooms = {}; // { roomName: { password, creator, participants: [] } }
 
-app.use("/peerjs", peerServer);
-app.use(express.static("public"));
+io.on('connection', (socket) => {
+  console.log('✅ Usuário conectado:', socket.id);
 
-// Store rooms
-const rooms = new Map(); // roomName -> { password, creator, participants: Map() }
+  // Registrar peerID
+  socket.on('register-peer', ({ peerId }) => {
+    socket.peerId = peerId;
+    console.log(`Peer registrado para ${socket.id}: ${peerId}`);
+  });
 
-io.on("connection", (socket) => {
-  console.log("👤 Usuário conectado:", socket.id);
-
-  socket.emit("rooms-list", getRoomsList());
-
-  socket.on("create-room", ({ roomName, password, creator, creatorId }) => {
-    if (rooms.has(roomName)) {
-      socket.emit("room-error", "Sala já existe!");
+  // Criar sala
+  socket.on('create-room', ({ roomName, password, creator }) => {
+    if (rooms[roomName]) {
+      socket.emit('room-error', 'Sala já existe!');
       return;
     }
 
-    rooms.set(roomName, {
+    rooms[roomName] = {
       password,
       creator,
-      creatorId,
-      participants: new Map(), // socketId -> { name, peerId }
-    });
-
-    console.log(`🏠 Sala criada: ${roomName}`);
-    io.emit("rooms-list", getRoomsList());
-  });
-
-  socket.on("join-room", ({ roomName, password, userName }) => {
-    const room = rooms.get(roomName);
-
-    if (!room) {
-      socket.emit("room-error", "Sala não encontrada!");
-      return;
-    }
-
-    if (room.password !== password) {
-      socket.emit("room-error", "Senha incorreta!");
-      return;
-    }
-
-    if (room.participants.size >= 5) {
-      socket.emit("room-error", "Sala cheia (máx 5 pessoas)");
-      return;
-    }
-
+      participants: {}
+    };
+    rooms[roomName].participants[socket.id] = { name: creator, peerId: socket.peerId };
     socket.join(roomName);
-    
-    // Armazena o peerId junto com o socketId
-    room.participants.set(socket.id, {
-      name: userName,
-      peerId: null // Será atualizado quando o peer conectar
-    });
-    
-    socket.data.room = roomName;
-    socket.data.userName = userName;
-
-    // Envia lista de participantes com seus peerIds
-    const participantsList = Array.from(room.participants.entries()).map(([id, data]) => ({
-      socketId: id,
-      name: data.name,
-      peerId: data.peerId
-    }));
-    
-    socket.emit("room-joined", {
-      name: roomName,
-      creator: room.creator,
-      participants: participantsList
-    });
-
-    // Notifica os outros
-    socket.to(roomName).emit("user-connected", {
-      socketId: socket.id,
-      name: userName,
-      peerId: null
-    });
-
-    io.emit("rooms-list", getRoomsList());
+    socket.emit('room-joined', { roomName });
+    io.emit('rooms-list', Object.keys(rooms).map(name => ({
+      name,
+      creator: rooms[name].creator,
+      participants: Object.keys(rooms[name].participants).length
+    })));
   });
 
-  // Novo evento para registrar peerId
-  socket.on("register-peer", ({ peerId }) => {
-    const roomName = socket.data.room;
-    if (!roomName) return;
-    
-    const room = rooms.get(roomName);
-    if (room && room.participants.has(socket.id)) {
-      const participant = room.participants.get(socket.id);
-      participant.peerId = peerId;
-      
-      // Notifica todos na sala sobre o peerId
-      io.to(roomName).emit("peer-registered", {
-        socketId: socket.id,
-        peerId: peerId
-      });
+  // Entrar na sala
+  socket.on('join-room', ({ roomName, password, userName }) => {
+    const room = rooms[roomName];
+    if (!room) return socket.emit('room-error', 'Sala não existe!');
+    if (room.password !== password) return socket.emit('room-error', 'Senha incorreta!');
+
+    room.participants[socket.id] = { name: userName, peerId: socket.peerId };
+    socket.join(roomName);
+
+    // Notificar participantes
+    socket.to(roomName).emit('user-connected', { socketId: socket.id, name: userName, peerId: socket.peerId });
+    socket.emit('room-joined', { roomName });
+  });
+
+  // Sair da sala
+  socket.on('leave-room', () => {
+    leaveRooms(socket);
+  });
+
+  socket.on('disconnect', () => {
+    leaveRooms(socket);
+    console.log('❌ Usuário desconectado:', socket.id);
+  });
+
+  // Chat
+  socket.on('chat-message', ({ room, message, sender, senderName }) => {
+    socket.to(room).emit('chat-message', { message, sender, senderName });
+  });
+
+  // Host actions
+  socket.on('host-mute', ({ room, userId, mute }) => {
+    io.to(userId).emit('user-muted', { userId, muted: mute });
+  });
+
+  socket.on('host-screen-block', ({ room, userId, block }) => {
+    io.to(userId).emit('screen-blocked', { userId, blocked: block });
+  });
+
+  socket.on('host-kick', ({ room, userId }) => {
+    io.to(userId).emit('user-kicked');
+    const roomObj = rooms[room];
+    if (roomObj && roomObj.participants[userId]) {
+      delete roomObj.participants[userId];
+      io.to(room).emit('user-disconnected', userId);
     }
   });
 
-  socket.on("chat-message", ({ room, message, senderName }) => {
-    io.to(room).emit("chat-message", { message, senderName });
+  // Raise hand
+  socket.on('raise-hand', ({ room, raised, userName }) => {
+    socket.to(room).emit(raised ? 'hand-raised' : 'hand-lowered', { userId: socket.id, userName });
   });
 
-  socket.on("leave-room", () => {
-    const roomName = socket.data.room;
-    if (roomName) leaveRoom(socket, roomName);
+  // Speaking
+  socket.on('speaking-status', ({ room, speaking }) => {
+    socket.to(room).emit('user-speaking', { userId: socket.id, speaking });
   });
 
-  socket.on("disconnect", () => {
-    rooms.forEach((room, roomName) => {
-      if (room.participants.has(socket.id)) {
-        leaveRoom(socket, roomName);
+  function leaveRooms(socket) {
+    for (const roomName of Object.keys(socket.rooms)) {
+      if (roomName === socket.id) continue;
+      const room = rooms[roomName];
+      if (!room) continue;
+
+      delete room.participants[socket.id];
+      socket.to(roomName).emit('user-disconnected', socket.id);
+
+      if (Object.keys(room.participants).length === 0) {
+        delete rooms[roomName];
+      } else if (room.creator === socket.id) {
+        // Transferir criação para outro participante
+        const [newCreatorId] = Object.keys(room.participants);
+        room.creator = room.participants[newCreatorId].name;
       }
-    });
+    }
+  }
+
+  socket.on('get-rooms', () => {
+    socket.emit('rooms-list', Object.keys(rooms).map(name => ({
+      name,
+      creator: rooms[name].creator,
+      participants: Object.keys(rooms[name].participants).length
+    })));
   });
 });
 
-function leaveRoom(socket, roomName) {
-  const room = rooms.get(roomName);
-  if (room) {
-    room.participants.delete(socket.id);
-    socket.to(roomName).emit("user-disconnected", socket.id);
-    
-    if (room.participants.size === 0) {
-      rooms.delete(roomName);
-    }
-    
-    io.emit("rooms-list", getRoomsList());
-  }
-}
+// ================================
+// Servir arquivos estáticos
+// ================================
+app.use(express.static(path.join(__dirname, 'public'))); // index.html, app.js, style.css, sounds/
 
-function getRoomsList() {
-  return Array.from(rooms.entries()).map(([name, data]) => ({
-    name,
-    creator: data.creator,
-    participants: data.participants.size,
-  }));
-}
-
+// ================================
+// Iniciar servidor
+// ================================
 const PORT = process.env.PORT || 3000;
-const HOST = "0.0.0.0";
-
-server.listen(PORT, HOST, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
-  console.log(`📢 PeerJS server em /peerjs`);
-  console.log(`🌐 Acesse de outros dispositivos usando o IP da máquina`);
-});
+server.listen(PORT, () => console.log(`🚀 iDev Meet rodando na porta ${PORT}`));

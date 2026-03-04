@@ -60,15 +60,10 @@ try {
 // ================================
 const peer = new Peer(undefined, {
   host: 'iver.space',
-  port: 3000,
+  port: 443,
   path: '/peerjs/myapp',
   secure: true,
-  debug: 3,
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' }
-    ]
-  }
+  debug: 3
 });
 
 peer.on('open', id => {
