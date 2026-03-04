@@ -1,45 +1,212 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Meu Meet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>iDev Meet</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📹</text></svg>">
 </head>
-
 <body>
+    <!-- Name Modal -->
+    <div id="nameModal" class="modal">
+      <div class="modal-content glass-effect">
+        <div class="modal-header">
+          <i class="fas fa-user-circle"></i>
+          <h2>Bem-vindo ao iDev Meet</h2>
+        </div>
+        <p>Por favor, informe seu nome para continuar</p>
+        <div class="input-group">
+          <i class="fas fa-user"></i>
+          <input
+            type="text"
+            id="userName"
+            maxlength="20"
+            placeholder="Seu nome"
+            autofocus
+          />
+        </div>
+        <button onclick="setUserName()" class="btn-primary">
+          <i class="fas fa-arrow-right"></i> Continuar
+        </button>
+      </div>
+    </div>
 
-<header>iDev</header>
+    <!-- Rest of your header and content -->
+    <header class="glass-effect">
+      <div class="logo">
+        <i class="fas fa-video"></i>
+        <span>iDev <span class="highlight">Meet</span></span>
+      </div>
+      <nav>
+        <a href="#home" class="active"><i class="fas fa-home"></i> Início</a>
+        <a href="#about"><i class="fas fa-info-circle"></i> Sobre</a>
+        <a href="#contact"><i class="fas fa-envelope"></i> Contato</a>
+      </nav>
+      <div class="user-profile" id="userProfile" style="display: none">
+        <i class="fas fa-user-circle"></i>
+        <span id="displayName"></span>
+      </div>
+    </header>
 
-<div id="home">
+    <main>
+      <!-- Home Section -->
+      <div id="home" class="section active">
+        <div class="hero">
+          <h1>
+            Conecte-se com <span class="gradient-text">qualquer pessoa</span>,
+            em qualquer lugar
+          </h1>
+          <p>
+            Crie salas seguras com senha e comece suas videochamadas
+            instantaneamente
+          </p>
+        </div>
 
-  <h2>Criar Sala</h2>
-  <input type="text" id="roomName" placeholder="Nome da sala" />
-  <input type="password" id="roomPassword" placeholder="Senha" />
-  <button onclick="createRoom()">Criar</button>
+        <div class="create-room-card glass-effect">
+          <h2><i class="fas fa-plus-circle"></i> Criar Nova Sala</h2>
+          <div class="input-group">
+            <i class="fas fa-tag"></i>
+            <input
+              type="text"
+              id="roomName"
+              maxlength="10"
+              placeholder="Nome da sala"
+            />
+          </div>
+          <div class="input-group">
+            <i class="fas fa-lock"></i>
+            <input type="password" id="roomPassword" placeholder="Senha" />
+          </div>
+          <button onclick="createRoom()" class="btn-primary">
+            <i class="fas fa-door-open"></i> Criar Sala
+          </button>
+        </div>
 
-  <hr />
+        <div class="rooms-section">
+          <h2><i class="fas fa-list"></i> Salas Disponíveis</h2>
+          <div id="roomsList" class="rooms-grid"></div>
+        </div>
+      </div>
 
-  <h2>Salas Disponíveis</h2>
-  <ul id="roomsList"></ul>
+      <!-- About Section -->
+      <div id="about" class="section">
+        <h2>Sobre o iDev Meet</h2>
+        <div class="features-grid">
+          <div class="feature-card">
+            <i class="fas fa-shield-alt"></i>
+            <h3>Segurança</h3>
+            <p>Salas protegidas por senha e criptografia de ponta a ponta</p>
+          </div>
+          <div class="feature-card">
+            <i class="fas fa-rocket"></i>
+            <h3>Alta Performance</h3>
+            <p>Streaming de vídeo em alta qualidade com baixa latência</p>
+          </div>
+          <div class="feature-card">
+            <i class="fas fa-users"></i>
+            <h3>Até 10 Participantes</h3>
+            <p>Reuniões com até 10 pessoas simultaneamente</p>
+          </div>
+          <div class="feature-card">
+            <i class="fas fa-clock"></i>
+            <h3>Gratuito</h3>
+            <p>Sem limites de tempo, use à vontade</p>
+          </div>
+        </div>
+      </div>
 
-</div>
+      <!-- Contact Section -->
+      <div id="about" class="section">
+        <h2>Entre em Contato</h2>
+        <form class="contact-form">
+          <input type="text" placeholder="Seu nome" />
+          <input type="email" placeholder="Seu email" />
+          <textarea placeholder="Sua mensagem"></textarea>
+          <button type="submit" class="btn-primary">Enviar</button>
+        </form>
+      </div>
 
-<div id="meeting" style="display:none;">
+      <!-- Meeting Section -->
+      <div id="meeting" class="section" style="display: none">
+        <div class="meeting-header glass-effect">
+          <div class="meeting-info">
+            <i class="fas fa-video"></i>
+            <span id="roomNameDisplay">Sala: </span>
+          </div>
+          <button onclick="leaveRoom()" class="btn-danger">
+            <i class="fas fa-sign-out-alt"></i> Sair
+          </button>
+        </div>
 
-  <div class="video-container">
-    <video id="localVideo" autoplay muted playsinline></video>
-    <video id="remoteVideo" autoplay playsinline></video>
-  </div>
+        <div class="video-container">
+          <div class="video-wrapper">
+            <video id="localVideo" autoplay muted playsinline></video>
+            <div class="video-label"><i class="fas fa-user"></i> Você</div>
+            <div class="video-controls-overlay">
+              <button onclick="toggleCamera()" id="camBtn" class="control-btn">
+                <i class="fas fa-video"></i>
+              </button>
+              <button onclick="toggleMic()" id="micBtn" class="control-btn">
+                <i class="fas fa-microphone"></i>
+              </button>
+            </div>
+          </div>
 
-  <div class="controls">
-    <button onclick="toggleCamera()" id="camBtn">Ligar Câmera</button>
-    <button onclick="toggleMic()" id="micBtn">Mutar Mic</button>
-  </div>
+          <div class="video-wrapper">
+            <video id="remoteVideo" autoplay playsinline></video>
+            <div class="video-label">
+              <i class="fas fa-user"></i> Participante
+            </div>
+          </div>
+        </div>
 
-</div>
+        <div class="controls glass-effect">
+          <button
+            onclick="toggleCamera()"
+            id="camBtn"
+            class="control-btn-large"
+          >
+            <i class="fas fa-video"></i>
+            <span>Ligar Câmera</span>
+          </button>
+          <button onclick="toggleMic()" id="micBtn" class="control-btn-large">
+            <i class="fas fa-microphone"></i>
+            <span>Mutar Mic</span>
+          </button>
+          <button onclick="shareScreen()" class="control-btn-large">
+            <i class="fas fa-desktop"></i>
+            <span>Compartilhar Tela</span>
+          </button>
+          <button onclick="toggleChat()" class="control-btn-large">
+            <i class="fas fa-comment"></i>
+            <span>Chat</span>
+          </button>
+        </div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script src="app.js"></script>
-
-</body>
+        <!-- Chat Panel -->
+        <div id="chatPanel" class="chat-panel" style="display: none">
+          <div class="chat-header">
+            <h3>Chat da Sala</h3>
+            <button onclick="toggleChat()"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input">
+            <input
+              type="text"
+              id="chatInput"
+              placeholder="Digite sua mensagem..."
+            />
+            <button onclick="sendMessage()">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+      <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="app.js"></script>
+  </body>
 </html>
