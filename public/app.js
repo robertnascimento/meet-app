@@ -125,6 +125,17 @@ socket.on("ice-candidate", async (candidate) => {
 });
 
 async function createPeerConnection() {
+
+  if (!localStream) {
+    console.log("Aguardando mídia...");
+    return;
+  }
+
+  if (peerConnection) {
+    console.log("PeerConnection já existe");
+    return;
+  }
+
   peerConnection = new RTCPeerConnection(config);
 
   localStream.getTracks().forEach(track => {
