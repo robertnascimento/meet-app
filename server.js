@@ -7,25 +7,71 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static("public"));
+app.use(express.json());
+
+const rooms = {}; 
+// Estrutura:
+// {
+//   nomeSala: {
+//     password: "123",
+//     users: []
+//   }
+// }
 
 io.on("connection", (socket) => {
   console.log("Usuário conectado:", socket.id);
 
-  socket.on("join-room", (roomId) => {
-    socket.join(roomId);
-    socket.to(roomId).emit("user-connected");
+  // 🔥 Criar sala
+  socket.on("create-room", ({ roomName, password }) => {
+    if (rooms[roomName]) {
+      socket.emit("room-error", "Sala já existe.");
+      return;
+    }
 
-    socket.on("offer", (data) => {
-      socket.to(roomId).emit("offer", data.offer);
-    });
+    rooms[roomName] = {
+      password,
+      users: []
+    };
 
-    socket.on("answer", (data) => {
-      socket.to(roomId).emit("answer", data.answer);
-    });
+    io.emit("rooms-list", Object.keys(rooms));
+  });
 
-    socket.on("ice-candidate", (data) => {
-      socket.to(roomId).emit("ice-candidate", data.candidate);
-    });
+  // 🔥 Enviar lista de salas
+  socket.on("get-rooms", () => {
+    socket.emit("rooms-list", Object.keys(rooms));
+  });
+
+  // 🔥 Entrar na sala
+  socket.on("join-room", ({ roomName, password }) => {
+    const room = rooms[roomName];
+
+    if (!room) {
+      socket.emit("room-error", "Sala não existe.");
+      return;
+    }
+
+    if (room.password !== password) {
+      socket.emit("room-error", "Senha incorreta.");
+      return;
+    }
+
+    socket.join(roomName);
+    room.users.push(socket.id);
+
+    socket.emit("room-joined", roomName);
+    socket.to(roomName).emit("user-connected");
+  });
+
+  socket.on("offer", ({ offer, roomName }) => {
+    socket.to(roomName).emit("offer", offer);
+  });
+
+  socket.on("answer", ({ answer, roomName }) => {
+    socket.to(roomName).emit("answer", answer);
+  });
+
+  socket.on("ice-candidate", ({ candidate, roomName }) => {
+    socket.to(roomName).emit("ice-candidate", candidate);
   });
 
   socket.on("disconnect", () => {

@@ -8,17 +8,34 @@
 
 <body>
 
-<header>Meu Meet 🔥</header>
+<header>iDev</header>
 
-<div class="video-container">
-  <video id="localVideo" autoplay muted playsinline></video>
-  <video id="remoteVideo" autoplay playsinline></video>
+<div id="home">
+
+  <h2>Criar Sala</h2>
+  <input type="text" id="roomName" placeholder="Nome da sala" />
+  <input type="password" id="roomPassword" placeholder="Senha" />
+  <button onclick="createRoom()">Criar</button>
+
+  <hr />
+
+  <h2>Salas Disponíveis</h2>
+  <ul id="roomsList"></ul>
+
 </div>
 
-<div class="controls">
-  <button onclick="joinRoom()">Entrar</button>
-  <button onclick="toggleCamera()" id="camBtn">Ligar Câmera</button>
-  <button onclick="toggleMic()" id="micBtn">Mutar Mic</button>
+<div id="meeting" style="display:none;">
+
+  <div class="video-container">
+    <video id="localVideo" autoplay muted playsinline></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
+
+  <div class="controls">
+    <button onclick="toggleCamera()" id="camBtn">Ligar Câmera</button>
+    <button onclick="toggleMic()" id="micBtn">Mutar Mic</button>
+  </div>
+
 </div>
 
 <script src="/socket.io/socket.io.js"></script>

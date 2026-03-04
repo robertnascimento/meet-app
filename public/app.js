@@ -1,5 +1,6 @@
 const socket = io();
-const roomId = "sala123";
+
+let currentRoom = null;
 
 const localVideo = document.getElementById("localVideo");
 const remoteVideo = document.getElementById("remoteVideo");
@@ -11,19 +12,62 @@ let audioEnabled = true;
 
 const config = {
   iceServers: [
-    { urls: "stun:stun.l.google.com:19302" }
+    {
+      urls: "stun:stun.l.google.com:19302"
+    },
+    {
+      urls: "turn:iver.space:3478",
+      username: "user",
+      credential: "meusegredoturn123"
+    }
   ]
 };
 
-async function joinRoom() {
+socket.emit("get-rooms");
+
+socket.on("rooms-list", (rooms) => {
+  const list = document.getElementById("roomsList");
+  list.innerHTML = "";
+
+  rooms.forEach(room => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      ${room}
+      <button onclick="joinRoomPrompt('${room}')">Entrar</button>
+    `;
+    list.appendChild(li);
+  });
+});
+
+function createRoom() {
+  const roomName = document.getElementById("roomName").value;
+  const password = document.getElementById("roomPassword").value;
+
+  socket.emit("create-room", { roomName, password });
+}
+
+function joinRoomPrompt(roomName) {
+  const password = prompt("Digite a senha da sala:");
+  socket.emit("join-room", { roomName, password });
+}
+
+socket.on("room-error", (msg) => {
+  alert(msg);
+});
+
+socket.on("room-joined", async (roomName) => {
+  currentRoom = roomName;
+
+  document.getElementById("home").style.display = "none";
+  document.getElementById("meeting").style.display = "block";
+
   localStream = await navigator.mediaDevices.getUserMedia({
     video: false,
     audio: true
   });
 
   localVideo.srcObject = localStream;
-  socket.emit("join-room", roomId);
-}
+});
 
 function toggleCamera() {
   videoEnabled = !videoEnabled;
@@ -95,7 +139,7 @@ async function createPeerConnection() {
     if (event.candidate) {
       socket.emit("ice-candidate", {
         candidate: event.candidate,
-        roomId
+        roomName: currentRoom
       });
     }
   };
@@ -107,7 +151,7 @@ async function createOffer() {
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
 
-  socket.emit("offer", { offer, roomId });
+  socket.emit("offer", { offer, roomName: currentRoom });
 }
 
 async function createAnswer(offer) {
@@ -118,5 +162,5 @@ async function createAnswer(offer) {
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
 
-  socket.emit("answer", { answer, roomId });
+  socket.emit("answer", { answer, roomName: currentRoom });
 }
