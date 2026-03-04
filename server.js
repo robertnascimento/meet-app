@@ -41,41 +41,66 @@ io.on('connection', (socket) => {
     console.log(`Peer registrado para ${socket.id}: ${peerId}`);
   });
 
-  // Criar sala
-  socket.on('create-room', ({ roomName, password, creator }) => {
-    if (rooms[roomName]) {
-      socket.emit('room-error', 'Sala já existe!');
-      return;
-    }
+// Criar sala
+socket.on('create-room', ({ roomName, password, creator }) => {
+  if (rooms[roomName]) {
+    socket.emit('room-error', 'Sala já existe!');
+    return;
+  }
 
-    rooms[roomName] = {
-      password,
-      creator,
-      participants: {}
-    };
-    rooms[roomName].participants[socket.id] = { name: creator, peerId: socket.peerId };
-    socket.join(roomName);
-    socket.emit('room-joined', { roomName });
-    io.emit('rooms-list', Object.keys(rooms).map(name => ({
-      name,
-      creator: rooms[name].creator,
-      participants: Object.keys(rooms[name].participants).length
-    })));
+  rooms[roomName] = {
+    password,
+    creator,
+    participants: {}
+  };
+  rooms[roomName].participants[socket.id] = { name: creator, peerId: socket.peerId };
+  socket.join(roomName);
+  
+  // CORRIGIDO: Envia objeto completo
+  socket.emit('room-joined', { 
+    name: roomName, 
+    creator: creator,
+    participants: Object.keys(rooms[roomName].participants).map(id => ({
+      socketId: id,
+      name: rooms[roomName].participants[id].name,
+      peerId: rooms[roomName].participants[id].peerId
+    }))
   });
+  
+  io.emit('rooms-list', Object.keys(rooms).map(name => ({
+    name,
+    creator: rooms[name].creator,
+    participants: Object.keys(rooms[name].participants).length
+  })));
+});
 
-  // Entrar na sala
-  socket.on('join-room', ({ roomName, password, userName }) => {
-    const room = rooms[roomName];
-    if (!room) return socket.emit('room-error', 'Sala não existe!');
-    if (room.password !== password) return socket.emit('room-error', 'Senha incorreta!');
+// Entrar na sala
+socket.on('join-room', ({ roomName, password, userName }) => {
+  const room = rooms[roomName];
+  if (!room) return socket.emit('room-error', 'Sala não existe!');
+  if (room.password !== password) return socket.emit('room-error', 'Senha incorreta!');
 
-    room.participants[socket.id] = { name: userName, peerId: socket.peerId };
-    socket.join(roomName);
+  room.participants[socket.id] = { name: userName, peerId: socket.peerId };
+  socket.join(roomName);
 
-    // Notificar participantes
-    socket.to(roomName).emit('user-connected', { socketId: socket.id, name: userName, peerId: socket.peerId });
-    socket.emit('room-joined', { roomName });
+  // Notificar participantes
+  socket.to(roomName).emit('user-connected', { 
+    socketId: socket.id, 
+    name: userName, 
+    peerId: socket.peerId 
   });
+  
+  // CORRIGIDO: Envia objeto completo para quem entrou
+  socket.emit('room-joined', { 
+    name: roomName, 
+    creator: room.creator,
+    participants: Object.keys(room.participants).map(id => ({
+      socketId: id,
+      name: room.participants[id].name,
+      peerId: room.participants[id].peerId
+    }))
+  });
+});
 
   // Sair da sala
   socket.on('leave-room', () => {
