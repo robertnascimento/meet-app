@@ -1,5 +1,5 @@
 // ================================
-// iDev Meet - app.js (CORRIGIDO - SEM DUPLICAÇÕES)
+// iDev Meet - app.js (SEM VALIDAÇÃO DE CRIAÇÃO)
 // ================================
 
 const socket = io();
@@ -359,11 +359,6 @@ function stopScreenSharing() {
 function createRoom() {
   if (!userName) {
     showNotification("Você precisa informar seu nome primeiro!", 'warning');
-    return;
-  }
-
-  if (userCreatedRoom) {
-    showNotification("Você já criou uma sala! Não pode criar outra.", 'warning');
     return;
   }
 
