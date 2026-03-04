@@ -11,10 +11,8 @@ let videoEnabled = false;
 let audioEnabled = true;
 
 const config = {
+  iceTransportPolicy: "relay",
   iceServers: [
-    {
-      urls: "stun:stun.l.google.com:19302"
-    },
     {
       urls: "turn:iver.space:3478",
       username: "user",
@@ -29,7 +27,7 @@ socket.on("rooms-list", (rooms) => {
   const list = document.getElementById("roomsList");
   list.innerHTML = "";
 
-  rooms.forEach(room => {
+  rooms.forEach((room) => {
     const li = document.createElement("li");
     li.innerHTML = `
       ${room}
@@ -63,33 +61,53 @@ socket.on("room-joined", async (roomName) => {
 
   localStream = await navigator.mediaDevices.getUserMedia({
     video: false,
-    audio: true
+    audio: true,
   });
 
   localVideo.srcObject = localStream;
 });
 
-function toggleCamera() {
+async function toggleCamera() {
   videoEnabled = !videoEnabled;
 
   if (videoEnabled) {
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => {
-        const videoTrack = stream.getVideoTracks()[0];
-        localStream.addTrack(videoTrack);
-        localVideo.srcObject = localStream;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    const videoTrack = stream.getVideoTracks()[0];
 
-        if (peerConnection) {
-          peerConnection.addTrack(videoTrack, localStream);
-        }
+    localStream.addTrack(videoTrack);
+    localVideo.srcObject = localStream;
 
-        document.getElementById("camBtn").innerText = "Desligar Câmera";
-      });
+    const sender = peerConnection
+      .getSenders()
+      .find((s) => s.track && s.track.kind === "video");
+
+    if (sender) {
+      await sender.replaceTrack(videoTrack);
+    } else {
+      peerConnection.addTrack(videoTrack, localStream);
+    }
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    socket.emit("offer", { offer, roomName: currentRoom });
+
+    document.getElementById("camBtn").innerText = "Desligar Câmera";
   } else {
-    localStream.getVideoTracks().forEach(track => {
-      track.stop();
-      localStream.removeTrack(track);
-    });
+    const videoTrack = localStream.getVideoTracks()[0];
+
+    if (videoTrack) {
+      videoTrack.stop();
+      localStream.removeTrack(videoTrack);
+    }
+
+    const sender = peerConnection
+      .getSenders()
+      .find((s) => s.track && s.track.kind === "video");
+
+    if (sender) {
+      sender.replaceTrack(null);
+    }
 
     document.getElementById("camBtn").innerText = "Ligar Câmera";
   }
@@ -98,12 +116,13 @@ function toggleCamera() {
 function toggleMic() {
   audioEnabled = !audioEnabled;
 
-  localStream.getAudioTracks().forEach(track => {
+  localStream.getAudioTracks().forEach((track) => {
     track.enabled = audioEnabled;
   });
 
-  document.getElementById("micBtn").innerText =
-    audioEnabled ? "Mutar Mic" : "Desmutar Mic";
+  document.getElementById("micBtn").innerText = audioEnabled
+    ? "Mutar Mic"
+    : "Desmutar Mic";
 }
 
 socket.on("user-connected", async () => {
@@ -125,7 +144,6 @@ socket.on("ice-candidate", async (candidate) => {
 });
 
 async function createPeerConnection() {
-
   if (!localStream) {
     console.log("Aguardando mídia...");
     return;
@@ -138,11 +156,12 @@ async function createPeerConnection() {
 
   peerConnection = new RTCPeerConnection(config);
 
-  localStream.getTracks().forEach(track => {
+  localStream.getTracks().forEach((track) => {
     peerConnection.addTrack(track, localStream);
   });
 
   peerConnection.ontrack = (event) => {
+    console.log("Track recebida:", event.streams[0]);
     remoteVideo.srcObject = event.streams[0];
   };
 
@@ -150,7 +169,7 @@ async function createPeerConnection() {
     if (event.candidate) {
       socket.emit("ice-candidate", {
         candidate: event.candidate,
-        roomName: currentRoom
+        roomName: currentRoom,
       });
     }
   };
