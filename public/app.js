@@ -886,36 +886,6 @@ socket.on("room-error", (msg) => {
   }
 });
 
-socket.on("room-joined", async (roomData) => {
-  currentRoom = roomData.name;
-  roomCreator = roomData.creator;
-  roomNameDisplay.textContent = `Sala: ${roomData.name}`;
-  
-  homeSection.classList.remove('active');
-  meetingSection.classList.add('active');
-  meetingSection.style.display = 'flex';
-  
-  createInviteLink();
-  addParticipantsPanel();
-  addHostButton();
-  
-  await initializeMedia();
-  
-  if (window.myPeerId) {
-    socket.emit('register-peer', { peerId: window.myPeerId });
-  }
-  
-  setTimeout(() => {
-    if (roomData.participants) {
-      roomData.participants.forEach(p => {
-        if (p.socketId !== socket.id && p.peerId) {
-          callPeer(p.peerId);
-        }
-      });
-    }
-  }, 2000);
-});
-
 socket.on("user-connected", ({ socketId, name, peerId }) => {
   showToast(`${name} entrou na sala`, 'info');
   if (soundsEnabled) playSound(joinSound);
@@ -1188,7 +1158,34 @@ soundToggle.innerHTML = `
 
 document.body.appendChild(soundToggle);
 
-// Add layout toggle when meeting starts
-socket.on("room-joined", () => {
-  document.querySelector('.meeting-header').appendChild(layoutToggle);
+// Este é o CORRETO - mantenha ele (linha ~260)
+socket.on("room-joined", async (roomData) => {
+  currentRoom = roomData.name;
+  roomCreator = roomData.creator;
+  roomNameDisplay.textContent = `Sala: ${roomData.name}`;
+  
+  homeSection.classList.remove('active');
+  meetingSection.classList.add('active');
+  meetingSection.style.display = 'flex';
+  
+  createInviteLink();
+  addParticipantsPanel();
+  addHostButton();
+  
+  await initializeMedia();
+  
+  if (window.myPeerId) {
+    socket.emit('register-peer', { peerId: window.myPeerId });
+  }
+  
+  // Chama outros participantes
+  setTimeout(() => {
+    if (roomData.participants) {
+      roomData.participants.forEach(p => {
+        if (p.socketId !== socket.id && p.peerId) {
+          callPeer(p.peerId);
+        }
+      });
+    }
+  }, 2000);
 });
