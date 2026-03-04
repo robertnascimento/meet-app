@@ -20,6 +20,9 @@
   "description": "",
   "dependencies": {
     "express": "^5.2.1",
-    "socket.io": "^4.8.3"
+    "mediasoup": "^3.19.17",
+    "mediasoup-client": "^3.18.7",
+    "socket.io": "^4.8.3",
+    "uuid": "^13.0.0"
   }
 }

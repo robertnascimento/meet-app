@@ -1,84 +1,105 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const mediasoup = require("mediasoup");
+const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static("public"));
-app.use(express.json());
 
-const rooms = {}; 
-// Estrutura:
-// {
-//   nomeSala: {
-//     password: "123",
-//     users: []
+let worker;
+let rooms = {}; 
+// rooms = {
+//   roomId: {
+//     router,
+//     peers: Map()
 //   }
 // }
+
+(async () => {
+  worker = await mediasoup.createWorker({
+    rtcMinPort: 40000,
+    rtcMaxPort: 49999
+  });
+
+  console.log("Mediasoup Worker criado");
+})();
 
 io.on("connection", (socket) => {
   console.log("Usuário conectado:", socket.id);
 
-  // 🔥 Criar sala
-  socket.on("create-room", ({ roomName, password }) => {
-    if (rooms[roomName]) {
-      socket.emit("room-error", "Sala já existe.");
-      return;
+  socket.on("join-room", async ({ roomName }) => {
+    if (!rooms[roomName]) {
+      const router = await worker.createRouter({
+        mediaCodecs: [
+          {
+            kind: "audio",
+            mimeType: "audio/opus",
+            clockRate: 48000,
+            channels: 2
+          },
+          {
+            kind: "video",
+            mimeType: "video/VP8",
+            clockRate: 90000
+          }
+        ]
+      });
+
+      rooms[roomName] = {
+        router,
+        peers: new Map()
+      };
     }
 
-    rooms[roomName] = {
-      password,
-      users: []
-    };
-
-    io.emit("rooms-list", Object.keys(rooms));
-  });
-
-  // 🔥 Enviar lista de salas
-  socket.on("get-rooms", () => {
-    socket.emit("rooms-list", Object.keys(rooms));
-  });
-
-  // 🔥 Entrar na sala
-  socket.on("join-room", ({ roomName, password }) => {
     const room = rooms[roomName];
 
-    if (!room) {
-      socket.emit("room-error", "Sala não existe.");
+    if (room.peers.size >= 10) {
+      socket.emit("room-error", "Sala cheia (máx 10 usuários)");
       return;
     }
 
-    if (room.password !== password) {
-      socket.emit("room-error", "Senha incorreta.");
-      return;
-    }
+    room.peers.set(socket.id, {
+      transports: [],
+      producers: [],
+      consumers: []
+    });
 
-    socket.join(roomName);
-    room.users.push(socket.id);
-
-    socket.emit("room-joined", roomName);
-    socket.to(roomName).emit("user-connected");
+    socket.emit("router-rtp-capabilities", room.router.rtpCapabilities);
   });
 
-  socket.on("offer", ({ offer, roomName }) => {
-    socket.to(roomName).emit("offer", offer);
-  });
+  socket.on("create-transport", async ({ roomName }, callback) => {
+    const room = rooms[roomName];
+    const transport = await room.router.createWebRtcTransport({
+      listenIps: [{ ip: "0.0.0.0", announcedIp: "18.119.70.109" }],
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: true
+    });
 
-  socket.on("answer", ({ answer, roomName }) => {
-    socket.to(roomName).emit("answer", answer);
-  });
+    room.peers.get(socket.id).transports.push(transport);
 
-  socket.on("ice-candidate", ({ candidate, roomName }) => {
-    socket.to(roomName).emit("ice-candidate", candidate);
+    callback({
+      id: transport.id,
+      iceParameters: transport.iceParameters,
+      iceCandidates: transport.iceCandidates,
+      dtlsParameters: transport.dtlsParameters
+    });
   });
 
   socket.on("disconnect", () => {
-    console.log("Usuário desconectado:", socket.id);
+    for (const roomName in rooms) {
+      const room = rooms[roomName];
+      if (room.peers.has(socket.id)) {
+        room.peers.delete(socket.id);
+      }
+    }
   });
 });
 
 server.listen(3000, () => {
-  console.log("Servidor rodando na porta 3000 🚀");
+  console.log("Servidor SFU rodando 🚀");
 });
