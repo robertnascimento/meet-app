@@ -99,10 +99,11 @@ peer.on('call', call => {
   
   call.answer(localStream);
   
-  call.on('stream', remoteStream => {
-    console.log('📹 Stream recebido de:', call.peer);
-    addRemoteVideo(call.peer, remoteStream);
-  });
+call.on('stream', (remoteStream) => {
+  console.log('✅ Stream recebido de:', peerId);
+  setupStreamListeners(remoteStream, peerId);
+  addRemoteVideo(peerId, remoteStream);
+});
   
   call.on('close', () => {
     console.log('🔇 Chamada encerrada com:', call.peer);
@@ -114,6 +115,17 @@ peer.on('call', call => {
   call.on('error', err => {
     console.error('❌ Erro na chamada:', err);
   });
+
+  call.on('iceStateChange', (state) => {
+  console.log(`❄️ ICE state for ${call.peer}:`, state);
+});
+
+call.peerConnection.addEventListener('connectionstatechange', () => {
+  console.log(`🔌 Connection state for ${call.peer}:`, call.peerConnection.connectionState);
+  if (call.peerConnection.connectionState === 'connected') {
+    console.log(`✅ Conexão estabelecida com ${call.peer}`);
+  }
+});
   
   peers[call.peer] = call;
 });
@@ -188,10 +200,21 @@ function setUserName() {
 function addRemoteVideo(peerId, stream) {
   console.log('🎥 Adicionando vídeo remoto para:', peerId, stream);
   
-  const oldVideo = document.getElementById(`video-${peerId}`);
-  if (oldVideo) oldVideo.remove();
+  // Verifica se já existe
+  let videoWrapper = document.getElementById(`video-${peerId}`);
+  
+  if (videoWrapper) {
+    // Se já existe, só atualiza o stream
+    const existingVideo = videoWrapper.querySelector('video');
+    if (existingVideo) {
+      existingVideo.srcObject = stream;
+      existingVideo.play().catch(e => console.log('Erro ao dar play (existente):', e));
+    }
+    return;
+  }
 
-  const videoWrapper = document.createElement('div');
+  // Cria novo elemento
+  videoWrapper = document.createElement('div');
   videoWrapper.className = 'video-wrapper';
   videoWrapper.id = `video-${peerId}`;
   
@@ -204,9 +227,6 @@ function addRemoteVideo(peerId, stream) {
   // Importante: para o áudio funcionar
   video.muted = false;
   
-  // Tenta dar play (necessário em alguns navegadores)
-  video.play().catch(e => console.log('Erro ao dar play:', e));
-  
   const label = document.createElement('div');
   label.className = 'video-label';
   label.innerHTML = `<i class="fas fa-user"></i> ${getUserName(peerId) || 'Participante'}`;
@@ -215,7 +235,30 @@ function addRemoteVideo(peerId, stream) {
   videoWrapper.appendChild(label);
   videoContainer.appendChild(videoWrapper);
   
+  // Tenta dar play depois de adicionar ao DOM
+  setTimeout(() => {
+    video.play()
+      .then(() => console.log('✅ Play iniciado para:', peerId))
+      .catch(e => console.log('Erro ao dar play (atrasado):', e));
+  }, 100);
+  
   console.log('✅ Vídeo remoto adicionado para:', peerId);
+}
+// Adicione depois da função addRemoteVideo
+function setupStreamListeners(stream, peerId) {
+  stream.getTracks().forEach(track => {
+    track.onended = () => {
+      console.log(`🔇 Track de ${peerId} encerrada`);
+    };
+    
+    track.onmute = () => {
+      console.log(`🔇 Track de ${peerId} mutada`);
+    };
+    
+    track.onunmute = () => {
+      console.log(`🎤 Track de ${peerId} desmutada`);
+    };
+  });
 }
 
 function updateCameraUI() {
@@ -273,10 +316,11 @@ function callPeer(peerId) {
   try {
     const call = peer.call(peerId, localStream);
     
-    call.on('stream', (remoteStream) => {
-      console.log('✅ Stream recebido de:', peerId);
-      addRemoteVideo(peerId, remoteStream);
-    });
+call.on('stream', (remoteStream) => {
+  console.log('✅ Stream recebido de:', peerId);
+  setupStreamListeners(remoteStream, peerId);
+  addRemoteVideo(peerId, remoteStream);
+});
     
     call.on('close', () => {
       console.log('🔇 Chamada encerrada com:', peerId);
