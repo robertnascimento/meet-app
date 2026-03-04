@@ -15,8 +15,8 @@ const config = {
   iceServers: [
     {
       urls: "turn:iver.space:3478",
-      username: "user",
-      credential: "meusegredoturn123"
+      username: "robert",
+      credential: "123456"
     }
   ]
 };
