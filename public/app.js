@@ -11,7 +11,6 @@ let videoEnabled = false;
 let audioEnabled = true;
 
 const config = {
-  iceTransportPolicy: "relay",
   iceServers: [
     {
       urls: "turn:iver.space:3478",
@@ -20,7 +19,6 @@ const config = {
     }
   ]
 };
-
 socket.emit("get-rooms");
 
 socket.on("rooms-list", (rooms) => {
