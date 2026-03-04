@@ -76,10 +76,16 @@ const peer = new Peer(undefined, {
   }
 });
 
-peer.on('open', id => {
-  console.log('✅ PeerJS conectado com ID:', id);
+// Quando o peer reconectar, tenta chamar todos
+peer.on('open', (id) => {
+  console.log('🔄 Peer (re)conectado com ID:', id);
   window.myPeerId = id;
-  if (currentRoom) socket.emit('register-peer', { peerId: id });
+  
+  if (currentRoom) {
+    socket.emit('register-peer', { peerId: id });
+    // Tenta chamar todos os participantes
+    setTimeout(tryCallPendingPeers, 2000);
+  }
 });
 
 peer.on('call', call => {
@@ -439,6 +445,18 @@ function createRoom() {
   userCreatedRoom = true;
   userRooms.add(roomName);
   updateCreateRoomUI();
+}
+
+// Tenta chamar peers pendentes quando o peerId chegar
+function tryCallPendingPeers() {
+  if (!window.myPeerId) return;
+  
+  participants.forEach((participant, socketId) => {
+    if (socketId !== socket.id && participant.peerId && !peers[participant.peerId]) {
+      console.log('📞 Chamando peer pendente:', participant.peerId);
+      callPeer(participant.peerId);
+    }
+  });
 }
 
 function joinRoomPrompt(roomName) {
@@ -953,10 +971,11 @@ socket.on("user-connected", ({ socketId, name, peerId }) => {
   updateParticipantsList();
   
   if (peerId) {
-    console.log('📞 Chamando novo usuário:', peerId);
+    console.log('📞 Chamando novo usuário com peerId:', peerId);
     setTimeout(() => callPeer(peerId), 1500);
   } else {
-    console.log('⏳ Novo usuário sem peerId ainda');
+    console.log('⏳ Novo usuário sem peerId ainda - vai aguardar');
+    // Não faz nada, vai esperar o peer-registered
   }
 });
 socket.on("user-disconnected", (userId) => {
@@ -979,15 +998,86 @@ socket.on("user-disconnected", (userId) => {
 socket.on("peer-registered", ({ socketId, peerId }) => {
   console.log(`✅ Peer registrado: ${socketId} -> ${peerId}`);
   
+  // Atualiza o participante
   const participant = participants.get(socketId);
   if (participant) {
     participant.peerId = peerId;
     updateParticipantsList();
+  } else {
+    // Se o participante ainda não existe (caso raro), adiciona
+    window.userNames = window.userNames || {};
+    const name = window.userNames[socketId] || 'Participante';
+    participants.set(socketId, {
+      name: name,
+      speaking: false,
+      handRaised: false,
+      videoEnabled: false,
+      audioEnabled: true,
+      peerId: peerId
+    });
+    updateParticipantsList();
   }
   
+  // Se for outro usuário, chama
   if (socketId !== socket.id) {
     console.log('📞 Chamando peer recém-registrado:', peerId);
-    callPeer(peerId);
+    setTimeout(() => callPeer(peerId), 1000);
+  }
+  
+  // Tenta chamar peers pendentes
+  tryCallPendingPeers();
+});
+
+socket.on("room-joined", async (roomData) => {
+  console.log('🎯 Entrando na sala:', roomData);
+  currentRoom = roomData.name;
+  roomCreator = roomData.creator;
+  roomNameDisplay.textContent = `Sala: ${roomData.name}`;
+  
+  homeSection.classList.remove('active');
+  meetingSection.classList.add('active');
+  meetingSection.style.display = 'flex';
+  
+  createInviteLink();
+  addParticipantsPanel();
+  addHostButton();
+  
+  await initializeMedia();
+  
+  if (window.myPeerId) {
+    console.log('📝 Registrando peer:', window.myPeerId);
+    socket.emit('register-peer', { peerId: window.myPeerId });
+    
+    // Tenta chamar imediatamente
+    setTimeout(() => {
+      if (roomData.participants && roomData.participants.length > 0) {
+        console.log('👥 Participantes na sala:', roomData.participants);
+        roomData.participants.forEach(p => {
+          if (p.socketId !== socket.id && p.peerId) {
+            console.log('📞 Chamando participante:', p.peerId);
+            callPeer(p.peerId);
+          }
+        });
+      }
+    }, 2000);
+  } else {
+    console.log('⏳ Aguardando peer ID para registrar...');
+    // Quando o peer abrir, registra e chama
+    peer.once('open', (id) => {
+      console.log('✅ Peer abriu, registrando:', id);
+      socket.emit('register-peer', { peerId: id });
+      
+      // Tenta chamar após registro
+      setTimeout(() => {
+        if (roomData.participants) {
+          roomData.participants.forEach(p => {
+            if (p.socketId !== socket.id && p.peerId) {
+              callPeer(p.peerId);
+            }
+          });
+        }
+      }, 1500);
+    });
   }
 });
 

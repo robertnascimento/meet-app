@@ -80,8 +80,30 @@ socket.on('join-room', ({ roomName, password, userName }) => {
   if (!room) return socket.emit('room-error', 'Sala não existe!');
   if (room.password !== password) return socket.emit('room-error', 'Senha incorreta!');
 
+  // AGUARDA um pouco para o peerId ser registrado
+  setTimeout(() => {
+    // Verifica se já tem peerId
+    if (!socket.peerId) {
+      console.log(`⚠️ Usuário ${socket.id} entrou sem peerId, aguardando...`);
+      // Se não tiver, aguarda mais um pouco
+      setTimeout(() => {
+        if (!socket.peerId) {
+          console.log(`❌ Usuário ${socket.id} ainda sem peerId, usando socket.id como fallback`);
+          socket.peerId = socket.id; // Fallback
+        }
+        completeJoin(socket, room, roomName, userName);
+      }, 2000);
+    } else {
+      completeJoin(socket, room, roomName, userName);
+    }
+  }, 500);
+});
+
+function completeJoin(socket, room, roomName, userName) {
   room.participants[socket.id] = { name: userName, peerId: socket.peerId };
   socket.join(roomName);
+
+  console.log(`✅ ${userName} entrou na sala ${roomName} com peerId ${socket.peerId}`);
 
   // Notificar participantes
   socket.to(roomName).emit('user-connected', { 
@@ -90,7 +112,7 @@ socket.on('join-room', ({ roomName, password, userName }) => {
     peerId: socket.peerId 
   });
   
-  // CORRIGIDO: Envia objeto completo para quem entrou
+  // Envia lista completa para quem entrou
   socket.emit('room-joined', { 
     name: roomName, 
     creator: room.creator,
@@ -100,7 +122,7 @@ socket.on('join-room', ({ roomName, password, userName }) => {
       peerId: room.participants[id].peerId
     }))
   });
-});
+}
 
   // Sair da sala
   socket.on('leave-room', () => {
