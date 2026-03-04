@@ -55,6 +55,7 @@ try {
   joinSound = leaveSound = messageSound = raiseHandSound = { play: () => {} };
 }
 
+
 // ================================
 // PeerJS
 // ================================
@@ -63,7 +64,16 @@ const peer = new Peer(undefined, {
   port: 443,
   path: '/peerjs/myapp',
   secure: true,
-  debug: 3
+  debug: 3,
+  config: {
+    'iceServers': [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' }
+    ]
+  }
 });
 
 peer.on('open', id => {
@@ -73,13 +83,32 @@ peer.on('open', id => {
 });
 
 peer.on('call', call => {
+  console.log('📞 Recebendo chamada de:', call.peer);
+  
   if (!localStream) {
+    console.log('⚠️ Sem stream local, respondendo mesmo assim');
     call.answer();
     return;
   }
+  
   call.answer(localStream);
-  call.on('stream', remoteStream => addRemoteVideo(call.peer, remoteStream));
-  call.on('error', err => console.error('Erro na chamada:', err));
+  
+  call.on('stream', remoteStream => {
+    console.log('📹 Stream recebido de:', call.peer);
+    addRemoteVideo(call.peer, remoteStream);
+  });
+  
+  call.on('close', () => {
+    console.log('🔇 Chamada encerrada com:', call.peer);
+    const videoEl = document.getElementById(`video-${call.peer}`);
+    if (videoEl) videoEl.remove();
+    delete peers[call.peer];
+  });
+  
+  call.on('error', err => {
+    console.error('❌ Erro na chamada:', err);
+  });
+  
   peers[call.peer] = call;
 });
 
@@ -89,6 +118,7 @@ peer.on('error', err => {
     setTimeout(() => peer.reconnect(), 2000);
   }
 });
+
 
 // ================================
 // Session Storage: Nome
@@ -150,6 +180,8 @@ function setUserName() {
 // Funções de Vídeo Remoto
 // ================================
 function addRemoteVideo(peerId, stream) {
+  console.log('🎥 Adicionando vídeo remoto para:', peerId, stream);
+  
   const oldVideo = document.getElementById(`video-${peerId}`);
   if (oldVideo) oldVideo.remove();
 
@@ -163,6 +195,12 @@ function addRemoteVideo(peerId, stream) {
   video.playsInline = true;
   video.srcObject = stream;
   
+  // Importante: para o áudio funcionar
+  video.muted = false;
+  
+  // Tenta dar play (necessário em alguns navegadores)
+  video.play().catch(e => console.log('Erro ao dar play:', e));
+  
   const label = document.createElement('div');
   label.className = 'video-label';
   label.innerHTML = `<i class="fas fa-user"></i> ${getUserName(peerId) || 'Participante'}`;
@@ -170,6 +208,8 @@ function addRemoteVideo(peerId, stream) {
   videoWrapper.appendChild(video);
   videoWrapper.appendChild(label);
   videoContainer.appendChild(videoWrapper);
+  
+  console.log('✅ Vídeo remoto adicionado para:', peerId);
 }
 
 function updateCameraUI() {
@@ -205,30 +245,48 @@ function updateMicUI() {
 }
 
 function callPeer(peerId) {
-  if (!peerId || !localStream) {
-    console.log('Aguardando peerId ou stream local');
+  if (!peerId) {
+    console.log('❌ peerId não fornecido');
+    return;
+  }
+  
+  if (!localStream) {
+    console.log('⏳ Aguardando stream local para chamar', peerId);
+    // Tenta novamente em 1 segundo
+    setTimeout(() => callPeer(peerId), 1000);
     return;
   }
   
   console.log('📞 Chamando peer:', peerId);
   
   if (peers[peerId]) {
-    console.log('Já existe conexão com', peerId);
+    console.log('ℹ️ Já existe conexão com', peerId);
     return;
   }
   
-  const call = peer.call(peerId, localStream);
-  
-  call.on('stream', (remoteStream) => {
-    console.log('📹 Stream recebido de:', peerId);
-    addRemoteVideo(peerId, remoteStream);
-  });
-  
-  call.on('error', (err) => {
-    console.error('Erro na chamada:', err);
-  });
-  
-  peers[peerId] = call;
+  try {
+    const call = peer.call(peerId, localStream);
+    
+    call.on('stream', (remoteStream) => {
+      console.log('✅ Stream recebido de:', peerId);
+      addRemoteVideo(peerId, remoteStream);
+    });
+    
+    call.on('close', () => {
+      console.log('🔇 Chamada encerrada com:', peerId);
+      const videoEl = document.getElementById(`video-${peerId}`);
+      if (videoEl) videoEl.remove();
+      delete peers[peerId];
+    });
+    
+    call.on('error', (err) => {
+      console.error('❌ Erro na chamada para', peerId, ':', err);
+    });
+    
+    peers[peerId] = call;
+  } catch (err) {
+    console.error('❌ Erro ao iniciar chamada:', err);
+  }
 }
 
 // ================================
@@ -877,6 +935,7 @@ socket.on("room-error", (msg) => {
 });
 
 socket.on("user-connected", ({ socketId, name, peerId }) => {
+  console.log('👤 Usuário conectado:', { socketId, name, peerId });
   showToast(`${name} entrou na sala`, 'info');
   if (soundsEnabled) playSound(joinSound);
   
@@ -894,10 +953,12 @@ socket.on("user-connected", ({ socketId, name, peerId }) => {
   updateParticipantsList();
   
   if (peerId) {
-    setTimeout(() => callPeer(peerId), 1000);
+    console.log('📞 Chamando novo usuário:', peerId);
+    setTimeout(() => callPeer(peerId), 1500);
+  } else {
+    console.log('⏳ Novo usuário sem peerId ainda');
   }
 });
-
 socket.on("user-disconnected", (userId) => {
   const userName = getUserName(userId);
   showToast(`${userName} saiu da sala`, 'info');
@@ -916,7 +977,7 @@ socket.on("user-disconnected", (userId) => {
 });
 
 socket.on("peer-registered", ({ socketId, peerId }) => {
-  console.log(`Peer registrado: ${socketId} -> ${peerId}`);
+  console.log(`✅ Peer registrado: ${socketId} -> ${peerId}`);
   
   const participant = participants.get(socketId);
   if (participant) {
@@ -925,6 +986,7 @@ socket.on("peer-registered", ({ socketId, peerId }) => {
   }
   
   if (socketId !== socket.id) {
+    console.log('📞 Chamando peer recém-registrado:', peerId);
     callPeer(peerId);
   }
 });
@@ -1148,8 +1210,8 @@ soundToggle.innerHTML = `
 
 document.body.appendChild(soundToggle);
 
-// Este é o CORRETO - mantenha ele (linha ~260)
 socket.on("room-joined", async (roomData) => {
+  console.log('🎯 Entrando na sala:', roomData);
   currentRoom = roomData.name;
   roomCreator = roomData.creator;
   roomNameDisplay.textContent = `Sala: ${roomData.name}`;
@@ -1165,17 +1227,28 @@ socket.on("room-joined", async (roomData) => {
   await initializeMedia();
   
   if (window.myPeerId) {
+    console.log('📝 Registrando peer:', window.myPeerId);
     socket.emit('register-peer', { peerId: window.myPeerId });
+  } else {
+    console.log('⏳ Aguardando peer ID...');
+    // Tenta registrar quando o peer abrir
+    peer.once('open', (id) => {
+      socket.emit('register-peer', { peerId: id });
+    });
   }
   
   // Chama outros participantes
   setTimeout(() => {
-    if (roomData.participants) {
+    if (roomData.participants && roomData.participants.length > 0) {
+      console.log('👥 Participantes na sala:', roomData.participants);
       roomData.participants.forEach(p => {
         if (p.socketId !== socket.id && p.peerId) {
+          console.log('📞 Chamando participante:', p.peerId);
           callPeer(p.peerId);
         }
       });
+    } else {
+      console.log('ℹ️ Nenhum outro participante na sala');
     }
-  }, 2000);
+  }, 3000); // Aumentei para 3 segundos
 });
