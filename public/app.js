@@ -2,7 +2,7 @@
 // iDev Meet - app.js (SEM VALIDAÇÃO DE CRIAÇÃO)
 // ================================
 
-const socket = io();
+const socket = io('https://iver.space'); // Nginx faz proxy
 let localStream = null;
 let peers = {}; // Conexões com outros participantes
 let chatVisible = false;
