@@ -1,5 +1,5 @@
 // ================================
-// iDev Meet - app.js (Corrigido)
+// iDev Meet - app.js (CORRIGIDO - SEM DUPLICAÇÕES)
 // ================================
 
 const socket = io();
@@ -58,12 +58,11 @@ try {
 // ================================
 // PeerJS
 // ================================
-// Linha ~70 - Substitua a configuração do PeerJS por esta:
 const peer = new Peer(undefined, {
   host: 'iver.space',
   port: 3000,
   path: '/peerjs/myapp',
-  secure: true, // ⚡ HTTPS
+  secure: true,
   debug: 3,
   config: {
     iceServers: [
@@ -152,11 +151,10 @@ function setUserName() {
   showNotification(`Bem-vindo, ${userName}!`, 'success');
 }
 
-
-// Adicione estas funções antes de updateCameraUI()
-
+// ================================
+// Funções de Vídeo Remoto
+// ================================
 function addRemoteVideo(peerId, stream) {
-  // Remove vídeo antigo se existir
   const oldVideo = document.getElementById(`video-${peerId}`);
   if (oldVideo) oldVideo.remove();
 
@@ -360,6 +358,9 @@ function stopScreenSharing() {
   socket.emit("screen-sharing-stopped", { room: currentRoom });
 }
 
+// ================================
+// Room Functions
+// ================================
 function createRoom() {
   if (!userName) {
     showNotification("Você precisa informar seu nome primeiro!", 'warning');
@@ -390,7 +391,6 @@ function createRoom() {
   userCreatedRoom = true;
   userRooms.add(roomName);
   updateCreateRoomUI();
-  socket.emit("get-rooms"); // ⚡ Atualiza lista imediatamente
 }
 
 function joinRoomPrompt(roomName) {
@@ -413,7 +413,7 @@ function joinRoomFromUrl() {
   const urlParams = new URLSearchParams(window.location.search);
   const room = urlParams.get('room');
   
-  if (room && !currentRoom) {
+  if (room && !currentRoom && userName) {
     const password = prompt(`Digite a senha da sala "${room}":`);
     if (password) {
       socket.emit("join-room", {
@@ -511,7 +511,9 @@ function displayRooms(rooms) {
   });
 }
 
-// Raise Hand Function
+// ================================
+// Raise Hand
+// ================================
 function toggleRaiseHand() {
   raisedHand = !raisedHand;
   
@@ -536,6 +538,9 @@ function toggleRaiseHand() {
   }
 }
 
+// ================================
+// Painel de Participantes
+// ================================
 function addParticipantsPanel() {
   const panel = document.createElement('div');
   panel.className = 'participants-panel minimized';
@@ -726,7 +731,9 @@ function updateParticipantsList() {
   list.innerHTML = html;
 }
 
+// ================================
 // Host actions
+// ================================
 function toggleMuteParticipant(userId) {
   const currentlyMuted = mutedByHost.get(userId);
   mutedByHost.set(userId, !currentlyMuted);
@@ -762,7 +769,9 @@ function kickParticipant(userId) {
   }
 }
 
-// Layout functions
+// ================================
+// Layout
+// ================================
 function toggleLayout() {
   layoutMode = layoutMode === 'grid' ? 'speaker' : 'grid';
   
@@ -778,7 +787,9 @@ function toggleLayout() {
   });
 }
 
-// Sound toggle
+// ================================
+// Sound
+// ================================
 function toggleSounds() {
   soundsEnabled = !soundsEnabled;
   
@@ -796,7 +807,9 @@ function playSound(audio) {
   }
 }
 
-
+// ================================
+// Chat
+// ================================
 function toggleChat() {
   chatVisible = !chatVisible;
   const chatPanel = document.getElementById("chatPanel");
@@ -856,13 +869,222 @@ function displayMessage(message, type, senderName) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// ================================
+// Socket Events
+// ================================
+
+socket.on("rooms-list", (rooms) => {
+  displayRooms(rooms);
+});
+
+socket.on("room-error", (msg) => {
+  showNotification(msg, 'error');
+  if (msg.includes("já criou")) {
+    userCreatedRoom = false;
+    userRooms.clear();
+    updateCreateRoomUI();
+  }
+});
+
+socket.on("room-joined", async (roomData) => {
+  currentRoom = roomData.name;
+  roomCreator = roomData.creator;
+  roomNameDisplay.textContent = `Sala: ${roomData.name}`;
+  
+  homeSection.classList.remove('active');
+  meetingSection.classList.add('active');
+  meetingSection.style.display = 'flex';
+  
+  createInviteLink();
+  addParticipantsPanel();
+  addHostButton();
+  
+  await initializeMedia();
+  
+  if (window.myPeerId) {
+    socket.emit('register-peer', { peerId: window.myPeerId });
+  }
+  
+  setTimeout(() => {
+    if (roomData.participants) {
+      roomData.participants.forEach(p => {
+        if (p.socketId !== socket.id && p.peerId) {
+          callPeer(p.peerId);
+        }
+      });
+    }
+  }, 2000);
+});
+
+socket.on("user-connected", ({ socketId, name, peerId }) => {
+  showToast(`${name} entrou na sala`, 'info');
+  if (soundsEnabled) playSound(joinSound);
+  
+  window.userNames = window.userNames || {};
+  window.userNames[socketId] = name;
+  
+  participants.set(socketId, {
+    name: name,
+    speaking: false,
+    handRaised: false,
+    videoEnabled: false,
+    audioEnabled: true,
+    peerId: peerId
+  });
+  updateParticipantsList();
+  
+  if (peerId) {
+    setTimeout(() => callPeer(peerId), 1000);
+  }
+});
+
+socket.on("user-disconnected", (userId) => {
+  const userName = getUserName(userId);
+  showToast(`${userName} saiu da sala`, 'info');
+  if (soundsEnabled) playSound(leaveSound);
+  
+  const videoWrapper = document.getElementById(`video-${userId}`);
+  if (videoWrapper) videoWrapper.remove();
+  
+  participants.delete(userId);
+  updateParticipantsList();
+  
+  if (peers[userId]) {
+    peers[userId].close();
+    delete peers[userId];
+  }
+});
+
+socket.on("peer-registered", ({ socketId, peerId }) => {
+  console.log(`Peer registrado: ${socketId} -> ${peerId}`);
+  
+  const participant = participants.get(socketId);
+  if (participant) {
+    participant.peerId = peerId;
+    updateParticipantsList();
+  }
+  
+  if (socketId !== socket.id) {
+    callPeer(peerId);
+  }
+});
+
+socket.on("user-name", ({ userId, name }) => {
+  if (!window.userNames) window.userNames = {};
+  window.userNames[userId] = name;
+  
+  participants.set(userId, {
+    name: name,
+    speaking: false,
+    handRaised: false,
+    videoEnabled: false,
+    audioEnabled: true
+  });
+  updateParticipantsList();
+});
+
+socket.on("hand-raised", ({ userId, userName }) => {
+  const participant = participants.get(userId);
+  if (participant) {
+    participant.handRaised = true;
+    updateParticipantsList();
+  }
+  showToast(`${userName} levantou a mão`, 'info');
+  if (soundsEnabled) playSound(raiseHandSound);
+});
+
+socket.on("hand-lowered", ({ userId }) => {
+  const participant = participants.get(userId);
+  if (participant) {
+    participant.handRaised = false;
+    updateParticipantsList();
+  }
+});
+
+socket.on("chat-message", (data) => {
+  displayMessage(data.message, 'other', data.senderName || 'Anônimo');
+  
+  if (!chatVisible) {
+    unreadMessages++;
+    updateChatBadge();
+  }
+  
+  if (soundsEnabled) playSound(messageSound);
+});
+
+socket.on("user-muted", ({ userId, muted }) => {
+  const participant = participants.get(userId);
+  if (participant) {
+    participant.audioEnabled = !muted;
+    updateParticipantsList();
+  }
+  
+  if (userId === socket.id) {
+    if (muted) {
+      audioEnabled = false;
+      updateMicUI();
+      showNotification("Você foi mutado pelo host", 'warning');
+    } else {
+      audioEnabled = true;
+      updateMicUI();
+    }
+  }
+});
+
+socket.on("screen-blocked", ({ userId, blocked }) => {
+  if (userId === socket.id && blocked) {
+    screenBlockedByHost.set(socket.id, true);
+    if (screenSharing) {
+      stopScreenSharing();
+    }
+    showNotification("Você foi bloqueado de compartilhar tela", 'warning');
+  }
+});
+
+socket.on("screen-sharing-started", ({ userId }) => {
+  if (userId !== socket.id) {
+    videoContainer.classList.add('screensharing');
+    
+    const remoteWrapper = document.getElementById(`video-${userId}`);
+    if (remoteWrapper) {
+      remoteWrapper.classList.add('remote-share');
+    }
+  }
+});
+
+socket.on("screen-sharing-stopped", ({ userId }) => {
+  if (userId !== socket.id) {
+    if (!screenSharing) {
+      videoContainer.classList.remove('screensharing');
+    }
+    
+    const remoteWrapper = document.getElementById(`video-${userId}`);
+    if (remoteWrapper) {
+      remoteWrapper.classList.remove('remote-share');
+    }
+  }
+});
+
+socket.on("room-deleted", (roomName) => {
+  if (currentRoom === roomName) {
+    leaveRoom();
+    showNotification("A sala foi fechada pelo criador", 'warning');
+  }
+});
+
+socket.on("user-kicked", () => {
+  showNotification("Você foi removido da sala", 'error');
+  leaveRoom();
+});
+
+// ================================
 // Utility Functions
+// ================================
 function getUserName(userId) {
   return window.userNames?.[userId] || 'Anônimo';
 }
 
 function leaveRoom() {
-  // Fecha todas as conexões Peer
   Object.values(peers).forEach(call => call.close());
   peers = {};
   
@@ -888,7 +1110,6 @@ function leaveRoom() {
   const panel = document.getElementById('participantsPanel');
   if (panel) panel.remove();
   
-  // Remove todos os vídeos remotos
   document.querySelectorAll('.video-wrapper:not(:first-child)').forEach(el => el.remove());
   
   currentRoom = null;
@@ -934,12 +1155,14 @@ function updateMediaButtons() {
   updateMicUI();
 }
 
-// Check for room in URL on load
+// ================================
+// Init
+// ================================
 window.addEventListener('load', () => {
-  joinRoomFromUrl();
+  if (userName) joinRoomFromUrl();
 });
 
-// Add layout toggle to meeting header
+// Layout toggle
 const layoutToggle = document.createElement('div');
 layoutToggle.className = 'layout-toggle';
 layoutToggle.innerHTML = `
@@ -951,7 +1174,7 @@ layoutToggle.innerHTML = `
   </button>
 `;
 
-// Add sound toggle
+// Sound toggle
 const soundToggle = document.createElement('div');
 soundToggle.className = 'sound-toggle';
 soundToggle.innerHTML = `
@@ -964,98 +1187,8 @@ soundToggle.innerHTML = `
 `;
 
 document.body.appendChild(soundToggle);
-// Adicione depois dos outros socket.on existentes
 
-socket.on("room-joined", async (roomData) => {
-  currentRoom = roomData.name;
-  roomCreator = roomData.creator;
-  roomNameDisplay.textContent = `Sala: ${roomData.name}`;
-  
-  homeSection.classList.remove('active');
-  meetingSection.classList.add('active');
-  meetingSection.style.display = 'flex';
-  
-  createInviteLink();
-  addParticipantsPanel();
-  addHostButton();
-  
-  await initializeMedia();
-  
-  if (window.myPeerId) {
-    socket.emit('register-peer', { peerId: window.myPeerId });
-  }
-  
-  // Chama outros participantes
-  setTimeout(() => {
-    if (roomData.participants) {
-      roomData.participants.forEach(p => {
-        if (p.socketId !== socket.id && p.peerId) {
-          callPeer(p.peerId);
-        }
-      });
-    }
-  }, 2000);
-});
-
-socket.on("user-connected", ({ socketId, name, peerId }) => {
-  showToast(`${name} entrou na sala`, 'info');
-  if (soundsEnabled) playSound(joinSound);
-  
-  window.userNames = window.userNames || {};
-  window.userNames[socketId] = name;
-  
-  participants.set(socketId, {
-    name: name,
-    speaking: false,
-    handRaised: false,
-    videoEnabled: false,
-    audioEnabled: true,
-    peerId: peerId
-  });
-  updateParticipantsList();
-  
-  if (peerId) {
-    setTimeout(() => callPeer(peerId), 1000);
-  }
-});
-
-socket.on("peer-registered", ({ socketId, peerId }) => {
-  console.log(`Peer registrado: ${socketId} -> ${peerId}`);
-  
-  const participant = participants.get(socketId);
-  if (participant) {
-    participant.peerId = peerId;
-    updateParticipantsList();
-  }
-  
-  if (socketId !== socket.id) {
-    callPeer(peerId);
-  }
-});
-
-// ================================
-// Atualização de salas em tempo real
-// ================================
-
-// Quando o servidor envia a lista atualizada de salas
-socket.on("rooms-list", (rooms) => {
-  displayRooms(rooms);
-});
-
-// Quando uma nova sala é criada
-socket.on("room-created", (room) => {
-  showToast(`Sala "${room.name}" criada!`, "success");
-  userRooms.add(room.name);
-  userCreatedRoom = true;
-  updateCreateRoomUI();
-  socket.emit("get-rooms"); // Atualiza a lista imediatamente
-});
-
-// Quando uma sala é deletada
-socket.on("room-deleted", ({ roomName }) => {
-  showToast(`Sala "${roomName}" foi excluída`, "info");
-  userRooms.delete(roomName);
-  if (currentRoom === roomName) leaveRoom();
-  updateCreateRoomUI();
-  socket.emit("get-rooms"); // Atualiza a lista
+// Add layout toggle when meeting starts
+socket.on("room-joined", () => {
+  document.querySelector('.meeting-header').appendChild(layoutToggle);
 });
