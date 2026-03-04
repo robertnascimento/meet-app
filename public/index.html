@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Meu Meet</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+<header>Meu Meet 🔥</header>
+
+<div class="video-container">
+  <video id="localVideo" autoplay muted playsinline></video>
+  <video id="remoteVideo" autoplay playsinline></video>
+</div>
+
+<div class="controls">
+  <button onclick="joinRoom()">Entrar</button>
+  <button onclick="toggleCamera()" id="camBtn">Ligar Câmera</button>
+  <button onclick="toggleMic()" id="micBtn">Mutar Mic</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>

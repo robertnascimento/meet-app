@@ -1,0 +1,55 @@
+body {
+  margin: 0;
+  background: #0f172a;
+  font-family: Arial;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+header {
+  padding: 15px;
+  background: #111827;
+  font-size: 20px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.video-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+}
+
+video {
+  width: 40%;
+  background: black;
+  border-radius: 15px;
+}
+
+.controls {
+  background: #111827;
+  padding: 15px;
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+}
+
+button {
+  padding: 12px 20px;
+  border-radius: 30px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 14px;
+  background: #2563eb;
+  color: white;
+  transition: 0.2s;
+}
+
+button:hover {
+  opacity: 0.8;
+}
