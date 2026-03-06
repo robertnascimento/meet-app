@@ -14,6 +14,7 @@ let audioEnabled = true;
 let screenSharing = false;
 let screenSharingStream = null;
 let userName = '';
+let remoteScreenSharing = false;
 let userCreatedRoom = false;
 let userRooms = new Set();
 let roomCreator = null;
@@ -317,32 +318,90 @@ function toggleMic() {
 
 async function shareScreen() {
   if (screenBlockedByHost.get(socket.id)) return showNotification("Bloqueado de compartilhar tela", 'warning');
+  
   try {
     if (!screenSharing) {
       const ss = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       screenSharingStream = ss;
-      const track = ss.getVideoTracks()[0];
-      track.onended = stopScreenSharing;
-      Object.values(peers).forEach(call => call.peerConnection?.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(track));
+      const screenTrack = ss.getVideoTracks()[0];
+      
+      screenTrack.onended = stopScreenSharing;
+      
+      // IMPORTANTE: Guarda a track original da câmera
+      const originalVideoTrack = localStream.getVideoTracks()[0];
+      
+      // Substitui a track em todas as conexões peer
+      Object.values(peers).forEach(call => {
+        if (call.peerConnection) {
+          const sender = call.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            sender.replaceTrack(screenTrack).catch(e => console.log('Erro replaceTrack:', e));
+          }
+        }
+      });
+      
+      // Atualiza o vídeo local para mostrar a tela
       localVideo.srcObject = ss;
-      videoContainer.classList.add('screensharing','local-share');
+      
+      // Atualiza UI
+      videoContainer.classList.add('screensharing', 'local-share');
+      
+      // Marca todos os vídeos remotos como "screen share" (vão mostrar a tela)
+      document.querySelectorAll('.video-wrapper:not(:first-child)').forEach(wrapper => {
+        wrapper.classList.add('remote-share');
+      });
+      
       screenSharing = true;
       showNotification("Compartilhando tela", 'success');
       socket.emit("screen-sharing-started", { room: currentRoom });
-    } else stopScreenSharing();
-  } catch (err) { if (err.name !== 'NotAllowedError') showNotification("Erro ao compartilhar tela", 'error'); }
+      
+    } else {
+      stopScreenSharing();
+    }
+  } catch (err) {
+    if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+      console.error('Erro screen share:', err);
+      showNotification("Erro ao compartilhar tela", 'error');
+    }
+  }
 }
 
 function stopScreenSharing() {
-  screenSharingStream?.getTracks().forEach(t => t.stop());
-  if (localStream) {
-    const track = localStream.getVideoTracks()[0];
-    Object.values(peers).forEach(call => call.peerConnection?.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(track));
-    localVideo.srcObject = localStream;
+  if (!screenSharing) return;
+  
+  // Para a stream de tela
+  if (screenSharingStream) {
+    screenSharingStream.getTracks().forEach(t => t.stop());
+    screenSharingStream = null;
   }
-  videoContainer.classList.remove('screensharing','local-share');
+  
+  // Restaura a track da câmera
+  if (localStream) {
+    const cameraTrack = localStream.getVideoTracks()[0];
+    if (cameraTrack) {
+      Object.values(peers).forEach(call => {
+        if (call.peerConnection) {
+          const sender = call.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            sender.replaceTrack(cameraTrack).catch(e => console.log('Erro ao restaurar track:', e));
+          }
+        }
+      });
+      
+      // Volta o vídeo local para a câmera
+      localVideo.srcObject = localStream;
+    }
+  }
+  
+  // Remove classes de UI
+  videoContainer.classList.remove('screensharing', 'local-share');
+  document.querySelectorAll('.video-wrapper').forEach(wrapper => {
+    wrapper.classList.remove('remote-share');
+  });
+  
   screenSharing = false;
   socket.emit("screen-sharing-stopped", { room: currentRoom });
+  showNotification("Compartilhamento encerrado", 'info');
 }
 
 function updateCameraUI() {
@@ -727,6 +786,37 @@ socket.on("hand-lowered", ({ userId }) => { const p = participants.get(userId); 
 socket.on("user-speaking", ({ userId, speaking }) => { const p = participants.get(userId); if (p?.peerId) document.getElementById(`video-${p.peerId}`)?.classList.toggle('speaking', speaking); });
 socket.on("room-deleted", (roomName) => { if (currentRoom === roomName) { leaveRoom(); showNotification("Sala fechada pelo criador", 'warning'); } });
 socket.on("user-kicked", () => { showNotification("Você foi removido da sala", 'error'); leaveRoom(); });
+
+// Adicione este listener
+socket.on("screen-sharing-started", ({ userId }) => {
+  if (userId !== socket.id) {
+    remoteScreenSharing = true;
+    videoContainer.classList.add('screensharing');
+    
+    // Marca o vídeo do usuário que está compartilhando
+    const participant = Array.from(participants.entries()).find(([id, p]) => p.peerId === userId)?.[0];
+    if (participant) {
+      const videoWrapper = document.getElementById(`video-${userId}`);
+      if (videoWrapper) {
+        videoWrapper.classList.add('remote-share');
+      }
+    }
+  }
+});
+
+socket.on("screen-sharing-stopped", ({ userId }) => {
+  if (userId !== socket.id) {
+    remoteScreenSharing = false;
+    if (!screenSharing) {
+      videoContainer.classList.remove('screensharing');
+    }
+    
+    // Remove marcação de todos os vídeos
+    document.querySelectorAll('.video-wrapper').forEach(wrapper => {
+      wrapper.classList.remove('remote-share');
+    });
+  }
+});
 
 // ================================
 // Leave

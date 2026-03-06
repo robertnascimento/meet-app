@@ -141,6 +141,7 @@
         </div>
 
         <div class="video-container">
+          <!-- Apenas o vídeo local estático -->
           <div class="video-wrapper">
             <video id="localVideo" autoplay muted playsinline></video>
             <div class="video-label"><i class="fas fa-user"></i> Você</div>
@@ -151,13 +152,6 @@
               <button onclick="toggleMic()" id="micBtn" class="control-btn">
                 <i class="fas fa-microphone"></i>
               </button>
-            </div>
-          </div>
-
-          <div class="video-wrapper">
-            <video id="remoteVideo" autoplay playsinline></video>
-            <div class="video-label">
-              <i class="fas fa-user"></i> Participante
             </div>
           </div>
         </div>
@@ -205,8 +199,10 @@
         </div>
       </div>
     </main>
-      <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="app.js"></script>
+    
+    <!-- Scripts -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>
